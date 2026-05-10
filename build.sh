@@ -9,6 +9,7 @@
 #   ./build.sh --target all
 #   ./build.sh --yes        Auto-yes to all prompts
 #   ./build.sh --clean      Clean before building
+#   ./build.sh --keep-deps  Keep auto-installed dependencies after build
 # -----------------------------------------------------------------------------
 
 set -eo pipefail
@@ -23,6 +24,7 @@ source "$SCRIPT_DIR/lib/package-manager.sh"
 
 AUTO_YES=false
 CLEAN_BUILD=false
+KEEP_DEPS=false
 
 TARGETS=()
 BUILD_LINUX=true
@@ -33,8 +35,8 @@ BUILD_WINDOWS=true
 
 show_help() {
     cat << EOF
-${BINARY_NAME} Build Script
-$(printf '%*s' "${#BINARY_NAME}" '' | tr ' ' '=')===============
+${PROJECT_NAME} Build Script
+$(printf '%*s' "${#PROJECT_NAME}" '' | tr ' ' '=')===============
 
 Usage:
   ./build.sh [options]
@@ -43,6 +45,7 @@ Options:
   -t, --target <platforms>   Build specific platforms (linux,macos,windows,all)
   -y, --yes                 Auto-answer yes to all prompts
   -c, --clean               Clean before building
+  -k, --keep-deps           Keep auto-installed dependencies after build
   -h, --help                Show this help
 
 Examples:
@@ -50,8 +53,11 @@ Examples:
   ./build.sh -t linux        Build Linux only
   ./build.sh -t linux,macos  Build Linux and macOS
   ./build.sh -t all -y       Build all, auto-confirm
+  ./build.sh -t all -y -c    Clean build of all platforms
 
-Note: Windows build on Windows just uses cargo build --release directly.
+Dependencies:
+  Auto-installed tools (zig, nfpm, cargo-zigbuild, mingw, rust targets)
+  are cleaned up after the build unless --keep-deps is passed.
 EOF
 }
 
@@ -72,6 +78,10 @@ parse_args() {
                 CLEAN_BUILD=true
                 shift
                 ;;
+            -k|--keep-deps)
+                KEEP_DEPS=true
+                shift
+                ;;
             -h|--help)
                 show_help
                 exit 0
@@ -83,12 +93,12 @@ parse_args() {
                 ;;
         esac
     done
-    
+
     if [[ ${#TARGETS[@]} -gt 0 ]]; then
         BUILD_LINUX=false
         BUILD_MACOS=false
         BUILD_WINDOWS=false
-        
+
         for target in "${TARGETS[@]}"; do
             case "$target" in
                 linux) BUILD_LINUX=true ;;
@@ -112,7 +122,7 @@ parse_args() {
 
 select_build_targets() {
     log_section "Build Targets"
-    
+
     echo "Select platforms to build:"
     echo "  1) Linux"
     echo "  2) macOS"
@@ -120,14 +130,14 @@ select_build_targets() {
     echo "  4) All platforms"
     echo ""
     echo "Or use command line: ./build.sh -t linux|macos|windows|all"
-    
+
     local choice
     choice=$(ask_choice "Choose:" 1 2 3 4)
-    
+
     BUILD_LINUX=false
     BUILD_MACOS=false
     BUILD_WINDOWS=false
-    
+
     case "$choice" in
         0) BUILD_LINUX=true ;;
         1) BUILD_MACOS=true ;;
@@ -140,15 +150,16 @@ select_build_targets() {
 
 show_build_summary() {
     log_section "Build Summary"
-    
+
     echo "Version: $VERSION"
     echo ""
+
     echo "Build targets:"
     [[ "$BUILD_LINUX" == "true" ]]   && echo "  • Linux (x86_64)"
     [[ "$BUILD_MACOS" == "true" ]]   && echo "  • macOS (aarch64)"
     [[ "$BUILD_WINDOWS" == "true" ]] && echo "  • Windows (x86_64)"
     echo ""
-    
+
     if [[ -d "$DIR_DIST" ]]; then
         echo "Output files:"
         ls -lh "$DIR_DIST/" 2>/dev/null | tail -n +2 | while read -r line; do
@@ -163,20 +174,20 @@ show_build_summary() {
 
 pre_build_checks() {
     log_section "Pre-build Checks"
-    
+
     VERSION=$(get_version_from_cargo)
     if [[ -z "$VERSION" ]]; then
         log_error "Could not read version from Cargo.toml"
         exit 1
     fi
     log_info "Building version: $VERSION"
-    
+
     if [[ "$CLEAN_BUILD" == "true" ]]; then
         log_info "Cleaning build directories..."
         cleanup_build_dirs
         log_success "Clean complete"
     fi
-    
+
     log_success "Pre-build checks complete"
 }
 
@@ -184,26 +195,30 @@ pre_build_checks() {
 
 main() {
     parse_args "$@"
-    
+
     setup_traps
-    
+
     if [[ ${#TARGETS[@]} -eq 0 ]]; then
         select_build_targets
     fi
-    
+
     if [[ "$BUILD_LINUX" != "true" ]] && \
        [[ "$BUILD_MACOS" != "true" ]] && \
        [[ "$BUILD_WINDOWS" != "true" ]]; then
         log_error "No build targets selected"
         exit 1
     fi
-    
+
     pre_build_checks
-    
+
+    # Export for sub-scripts
+    export KEEP_DEPS
+    export AUTO_YES
+
     local build_failed=false
     local builds_succeeded=0
     local builds_attempted=0
-    
+
     if [[ "$BUILD_LINUX" == "true" ]]; then
         builds_attempted=$((builds_attempted + 1))
         if "$SCRIPT_DIR/build-linux.sh"; then
@@ -213,7 +228,7 @@ main() {
             build_failed=true
         fi
     fi
-    
+
     if [[ "$BUILD_MACOS" == "true" ]]; then
         builds_attempted=$((builds_attempted + 1))
         if "$SCRIPT_DIR/build-macos.sh"; then
@@ -223,7 +238,7 @@ main() {
             build_failed=true
         fi
     fi
-    
+
     if [[ "$BUILD_WINDOWS" == "true" ]]; then
         builds_attempted=$((builds_attempted + 1))
         if "$SCRIPT_DIR/build-windows.sh"; then
@@ -233,18 +248,18 @@ main() {
             build_failed=true
         fi
     fi
-    
+
     show_build_summary
-    
+
     if [[ "$build_failed" == "true" ]]; then
         echo ""
         log_error "Build completed with errors ($builds_succeeded/$builds_attempted successful)"
         exit 1
     fi
-    
+
     echo ""
     log_success "All builds completed successfully ($builds_succeeded/$builds_attempted)"
-    
+
     log_info "Done!"
     exit 0
 }

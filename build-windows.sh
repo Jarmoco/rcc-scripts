@@ -15,42 +15,48 @@ if [[ -z "${VERSION:-}" ]]; then
     VERSION=$(get_version_from_cargo)
 fi
 
-DOWNLOADED_MINGW=false
 MINGW_PACKAGES=()
 
-# --- Dependency checks ----------------------------------------------------
+# --- Cleanup handler -------------------------------------------------------
+
+cleanup_windows() {
+    log_info "Windows build: cleaning up..."
+    dep_cleanup_all
+}
+
+# --- Dependency checks -----------------------------------------------------
 
 check_dependencies() {
     log_section "Windows Build: Dependencies"
-    
+
     if ! verify_command "cargo" "rust"; then
         log_error "Rust/Cargo is required"
         return 1
     fi
-    
+
     if ! check_rust_target_installed "x86_64-pc-windows-gnu"; then
         echo ""
         log_warn "Windows GNU target not installed"
-        
+
         if ! ask_yes_no "Install x86_64-pc-windows-gnu target?"; then
             log_info "Windows target required for cross-compile. Exiting."
             return 1
         fi
-        
+
         if ! install_rust_target "x86_64-pc-windows-gnu" "x86_64-pc-windows-gnu"; then
             return 1
         fi
     fi
-    
+
     if ! verify_command "x86_64-w64-mingw32-gcc" "mingw-w64"; then
         echo ""
         log_warn "mingw-w64 not found"
-        
-        if ! ask_yes_no "Download and install mingw-w64 for Windows cross-compilation?"; then
+
+        if ! ask_yes_no "Install mingw-w64 for Windows cross-compilation?"; then
             log_info "mingw-w64 required for Windows cross-compile. Exiting."
             return 1
         fi
-        
+
         if is_arch; then
             MINGW_PACKAGES=(
                 "mingw-w64-binutils"
@@ -69,48 +75,46 @@ check_dependencies() {
             log_info "  Fedora:        sudo dnf install mingw64-gcc mingw64-binutils"
             return 1
         fi
-        
-        if install_system_packages MINGW_PACKAGES "mingw-w64"; then
-            DOWNLOADED_MINGW=true
-        else
+
+        if ! install_system_packages MINGW_PACKAGES "mingw-w64"; then
             return 1
         fi
     fi
-    
+
     log_success "All dependencies satisfied"
     return 0
 }
 
-# --- Build steps ----------------------------------------------------------
+# --- Build steps -----------------------------------------------------------
 
 build_windows_binary() {
     log_section "Windows Build: Compiling"
-    
+
     log_info "Cross-compiling for Windows x86_64..."
-    
+
     if ! CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
          cargo build --target x86_64-pc-windows-gnu --release 2>&1; then
         log_error "Windows cross-compile failed"
         return 1
     fi
-    
-    BINARY="./target/x86_64-pc-windows-gnu/release/${BINARY_NAME}.exe"
+
+    BINARY="./target/x86_64-pc-windows-gnu/release/${PROJECT_NAME}.exe"
     if [[ ! -f "$BINARY" ]]; then
         log_error "Binary not found at $BINARY"
         return 1
     fi
-    
+
     log_success "Windows binary compiled"
     return 0
 }
 
 package_windows_binary() {
     log_section "Windows Build: Packaging"
-    
+
     ensure_dir "$DIR_DIST"
-    
-    local dest="$DIR_DIST/${BINARY_NAME}_${VERSION}_windows_x86_64.exe"
-    
+
+    local dest="$DIR_DIST/${PROJECT_NAME}_${VERSION}_windows_x86_64.exe"
+
     log_info "Copying Windows binary..."
     if [[ -n "${BINARY:-}" ]] && [[ -f "$BINARY" ]]; then
         cp "$BINARY" "$dest"
@@ -122,34 +126,25 @@ package_windows_binary() {
     return 0
 }
 
-# --- Cleanup --------------------------------------------------------------
-
-cleanup() {
-    if [[ "$DOWNLOADED_MINGW" == "true" ]]; then
-        log_section "Windows Build: Cleanup"
-        remove_system_packages MINGW_PACKAGES "mingw-w64"
-    fi
-}
-
-# --- Main -----------------------------------------------------------------
+# --- Main ------------------------------------------------------------------
 
 build_windows() {
-    trap cleanup EXIT
-    
+    trap cleanup_windows EXIT
+
     log_section "Windows Build"
-    
+
     if ! check_dependencies; then
         return 1
     fi
-    
+
     if ! build_windows_binary; then
         return 1
     fi
-    
+
     if ! package_windows_binary; then
         return 1
     fi
-    
+
     log_success "Windows build complete!"
     return 0
 }
