@@ -2,35 +2,25 @@
 
 Cross-compile build scripts for Rust projects. Build Linux, macOS (Apple Silicon), and Windows binaries from a single Linux machine.
 
-## Usage
+## How to setup for your project
 
 ```bash
-./build.sh
+cd your-project
+git submodule add https://github.com/Jarmoco/rcc-scripts rcc-scripts
 ```
 
-Interactive mode — selects all platforms by default. Packages land in `./dist/`.
+Create `rcc-scripts.conf` in your project root (see configuration below).
+
+Then build:
 
 ```bash
-./build.sh -t linux          # Linux only (.deb, .rpm, .pkg.tar.zst, tarball)
-./build.sh -t linux,macos    # Linux + macOS cross-compile
-./build.sh -t all -y         # All platforms, auto-confirm prompts
-./build.sh -c                # Clean before building
-./build.sh -k                # Keep auto-installed deps after build
+./rcc-scripts/build.sh
 ```
-
-## Prerequisites
-
-| Platform | Requires |
-|---|---|
-| Linux | cargo, [nfpm](https://nfpm.goreleaser.com) |
-| macOS (cross) | zig, cargo-zigbuild, `rustup target add aarch64-apple-darwin` |
-| Windows (cross) | mingw-w64, `rustup target add x86_64-pc-windows-gnu` |
-
-Missing tools are auto-installed (with confirmation) on **Arch Linux**, **Debian/Ubuntu**, and **Fedora**. On other distros, zig and nfpm are downloaded as pre-compiled tarballs.
+Missing build tools are auto-installed (with confirmation) on **Arch Linux**, **Debian/Ubuntu**, and **Fedora**. On other distros, zig and nfpm are downloaded as pre-compiled tarballs.
 
 ## Configuration
 
-Create `rcc-scripts.conf` in your project root (sibling to `rcc-scripts/`):
+Copy `rcc-scripts.conf.example` to `rcc-scripts.conf` in your project root (sibling to `rcc-scripts/`) and configure it for your needs:
 
 ```bash
 # rcc-scripts.conf
@@ -48,19 +38,20 @@ NFPM_VERSION="2.34.2"
 
 See `rcc-scripts/rcc-scripts.conf.example` for all available options.
 
-## Setup for your project
-
-```bash
-cd your-project
-git submodule add https://github.com/Jarmoco/rcc-scripts rcc-scripts
-```
-
-Create `rcc-scripts.conf` in your project root (see configuration above).
-
-Then build:
+## Usage
 
 ```bash
 ./rcc-scripts/build.sh
+```
+
+Interactive mode — selects all platforms by default. Packages land in `./dist/`.
+
+```bash
+./rcc-scripts/build.sh -t linux          # Linux only (.deb, .rpm, .pkg.tar.zst, tarball)
+./rcc-scripts/build.sh -t linux,macos    # Linux + macOS cross-compile
+./rcc-scripts/build.sh -t all -y         # All platforms, auto-confirm prompts
+./rcc-scripts/build.sh -c                # Clean before building
+./rcc-scripts/build.sh -k                # Keep auto-installed deps after build
 ```
 
 ## nfpm.yaml generation
