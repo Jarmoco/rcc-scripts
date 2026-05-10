@@ -73,7 +73,12 @@ fi
 
 if [[ "$PROJECT_NAME" == "changethis" ]]; then
     log_error "PROJECT_NAME is still set to 'changethis'."
-    log_error "Edit $CONFIG_FILE and set PROJECT_NAME to your binary name."
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        log_error "Config not found at $CONFIG_FILE"
+        log_error "Copy rcc-scripts/rcc-scripts.conf.example to $CONFIG_FILE and set PROJECT_NAME."
+    else
+        log_error "Edit $CONFIG_FILE and set PROJECT_NAME to your binary name."
+    fi
     exit 1
 fi
 
