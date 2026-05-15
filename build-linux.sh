@@ -10,8 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/package-manager.sh"
 
-NFPM_CONFIG="$PROJECT_ROOT/nfpm.yaml"
-
 if [[ -z "${VERSION:-}" ]]; then
     VERSION=$(get_version_from_cargo)
 fi
@@ -21,10 +19,7 @@ fi
 cleanup_linux() {
     log_info "Linux build: cleaning up..."
 
-    if [[ -f "$NFPM_CONFIG" ]]; then
-        rm -f "$NFPM_CONFIG"
-        log_info "Removed generated $NFPM_CONFIG"
-    fi
+    rm -f "$PROJECT_ROOT"/*-nfpm.yaml 2>/dev/null || true
 
     dep_cleanup_all
 }
@@ -75,7 +70,14 @@ build_linux_packages() {
         return 1
     fi
 
-    log_success "Linux binary compiled"
+    BINARIES=($(get_workspace_binaries))
+    for bin in "${BINARIES[@]}"; do
+        if [[ ! -x "./target/release/$bin" ]]; then
+            log_warn "Workspace binary not found: ./target/release/$bin"
+        fi
+    done
+
+    log_success "Linux binaries compiled"
     return 0
 }
 
@@ -84,45 +86,47 @@ package_linux_binaries() {
 
     ensure_dir "$DIR_DIST"
 
-    generate_nfpm_yaml "$NFPM_CONFIG" "$VERSION"
+    for bin in "${BINARIES[@]}"; do
+        local cfg="$PROJECT_ROOT/${bin}-nfpm.yaml"
 
-    if ! prompt_review_nfpm "$NFPM_CONFIG"; then
-        return 1
-    fi
+        generate_nfpm_yaml "$cfg" "$VERSION" "$bin"
 
-    log_info "Creating .deb package..."
-    if nfpm pkg --packager deb --config "$NFPM_CONFIG" --target "$DIR_DIST/" 2>&1; then
-        log_success ".deb package created"
-    else
-        log_warn ".deb packaging failed (nfpm may need config)"
-    fi
+        if [[ ${#BINARIES[@]} -eq 1 ]]; then
+            if ! prompt_review_nfpm "$cfg"; then
+                rm -f "$cfg"
+                return 1
+            fi
+        fi
 
-    log_info "Creating .rpm package..."
-    if nfpm pkg --packager rpm --config "$NFPM_CONFIG" --target "$DIR_DIST/" 2>&1; then
-        log_success ".rpm package created"
-    else
-        log_warn ".rpm packaging failed (nfpm may need config)"
-    fi
+        log_info "Creating .deb package for $bin..."
+        if nfpm pkg --packager deb --config "$cfg" --target "$DIR_DIST/" 2>&1; then
+            log_success ".deb package for $bin created"
+        else
+            log_warn ".deb packaging for $bin failed"
+        fi
 
-    log_info "Creating .archlinux package..."
-    if nfpm pkg --packager archlinux --config "$NFPM_CONFIG" --target "$DIR_DIST/" 2>&1; then
-        log_success ".archlinux package created"
-    else
-        log_warn ".archlinux packaging failed (nfpm may need config)"
-    fi
+        log_info "Creating .rpm package for $bin..."
+        if nfpm pkg --packager rpm --config "$cfg" --target "$DIR_DIST/" 2>&1; then
+            log_success ".rpm package for $bin created"
+        else
+            log_warn ".rpm packaging for $bin failed"
+        fi
 
-    log_info "Creating generic tarball..."
-    if [[ -n "${BINARY:-}" ]] && [[ -x "$BINARY" ]]; then
-        tar -czf "./$DIR_DIST/${PROJECT_NAME}_${VERSION}_linux_x86_64.tar.gz" \
-            -C "$(dirname "$BINARY")" "${PROJECT_NAME}"
-        log_success "Linux tarball created"
-    else
-        log_error "Binary not found, cannot create tarball"
-        return 1
-    fi
+        log_info "Creating .archlinux package for $bin..."
+        if nfpm pkg --packager archlinux --config "$cfg" --target "$DIR_DIST/" 2>&1; then
+            log_success ".archlinux package for $bin created"
+        else
+            log_warn ".archlinux packaging for $bin failed"
+        fi
 
-    rm -f "$NFPM_CONFIG"
-    log_info "Cleaned up $NFPM_CONFIG"
+        log_info "Creating tarball for $bin..."
+        tar -czf "./$DIR_DIST/${bin}_${VERSION}_linux_x86_64.tar.gz" \
+            -C "./target/release" "$bin"
+        log_success "Tarball for $bin created"
+
+        rm -f "$cfg"
+    done
+
     return 0
 }
 

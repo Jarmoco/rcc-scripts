@@ -104,7 +104,14 @@ build_windows_binary() {
         return 1
     fi
 
-    log_success "Windows binary compiled"
+    BINARIES=($(get_workspace_binaries))
+    for bin in "${BINARIES[@]}"; do
+        if [[ ! -f "./target/x86_64-pc-windows-gnu/release/${bin}.exe" ]]; then
+            log_warn "Workspace binary not found: ./target/x86_64-pc-windows-gnu/release/${bin}.exe"
+        fi
+    done
+
+    log_success "Windows binaries compiled"
     return 0
 }
 
@@ -113,16 +120,17 @@ package_windows_binary() {
 
     ensure_dir "$DIR_DIST"
 
-    local dest="$DIR_DIST/${PROJECT_NAME}_${VERSION}_windows_x86_64.exe"
+    for bin in "${BINARIES[@]}"; do
+        local src="./target/x86_64-pc-windows-gnu/release/${bin}.exe"
+        local dest="$DIR_DIST/${bin}_${VERSION}_windows_x86_64.exe"
+        if [[ -f "$src" ]]; then
+            cp "$src" "$dest"
+            log_success "Windows .exe created: $dest"
+        else
+            log_warn "Windows binary not found: $src"
+        fi
+    done
 
-    log_info "Copying Windows binary..."
-    if [[ -n "${BINARY:-}" ]] && [[ -f "$BINARY" ]]; then
-        cp "$BINARY" "$dest"
-        log_success "Windows .exe created: $dest"
-    else
-        log_error "Binary not found, cannot create package"
-        return 1
-    fi
     return 0
 }
 

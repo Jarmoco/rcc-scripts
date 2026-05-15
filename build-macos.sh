@@ -84,7 +84,8 @@ build_macos_binary() {
 
     log_info "Cross-compiling for macOS aarch64..."
 
-    if ! cargo zigbuild --target aarch64-apple-darwin --release 2>&1; then
+    if ! CFLAGS_aarch64_apple_darwin="-Wno-unknown-warning-option" \
+        cargo zigbuild --target aarch64-apple-darwin --release 2>&1; then
         log_error "cargo zigbuild failed"
         return 1
     fi
@@ -95,7 +96,14 @@ build_macos_binary() {
         return 1
     fi
 
-    log_success "macOS binary compiled"
+    BINARIES=($(get_workspace_binaries))
+    for bin in "${BINARIES[@]}"; do
+        if [[ ! -x "./target/aarch64-apple-darwin/release/$bin" ]]; then
+            log_warn "Workspace binary not found: ./target/aarch64-apple-darwin/release/$bin"
+        fi
+    done
+
+    log_success "macOS binaries compiled"
     return 0
 }
 
@@ -104,15 +112,13 @@ package_macos_binary() {
 
     ensure_dir "$DIR_DIST"
 
-    log_info "Creating macOS tarball..."
-    if [[ -n "${BINARY:-}" ]] && [[ -x "$BINARY" ]]; then
-        tar -czf "./$DIR_DIST/${PROJECT_NAME}_${VERSION}_macos_aarch64.tar.gz" \
-            -C "$(dirname "$BINARY")" "${PROJECT_NAME}"
-        log_success "macOS tarball created"
-    else
-        log_error "Binary not found, cannot create tarball"
-        return 1
-    fi
+    for bin in "${BINARIES[@]}"; do
+        log_info "Creating tarball for $bin..."
+        tar -czf "./$DIR_DIST/${bin}_${VERSION}_macos_aarch64.tar.gz" \
+            -C "./target/aarch64-apple-darwin/release" "$bin"
+        log_success "Tarball for $bin created"
+    done
+
     return 0
 }
 
